@@ -12,6 +12,7 @@
 #endif
 
 #include <sensor_msgs/Joy.h>
+#include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/Int16MultiArray.h>
 
 namespace legged {
@@ -26,90 +27,141 @@ bool UnitreeHW::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw_nh) {
   setupImu();
   setupContactSensor(robot_hw_nh);
 
-#ifdef UNITREE_SDK_3_3_1
-  udp_ = std::make_shared<UNITREE_LEGGED_SDK::UDP>(UNITREE_LEGGED_SDK::LOWLEVEL);
-#elif UNITREE_SDK_3_8_0
-  udp_ = std::make_shared<UNITREE_LEGGED_SDK::UDP>(UNITREE_LEGGED_SDK::LOWLEVEL, 8090, "192.168.123.10", 8007);
-#endif
+  // Subscribe to IMU data
+  imu_sub_ = root_nh.subscribe<sensor_msgs::Imu>("/imu/data_raw", 10, &UnitreeHW::imuCallback, this);
+  joint_state_sub_ = root_nh.subscribe<sensor_msgs::JointState>("/joint_states", 10, &UnitreeHW::jointStateCallback, this);
+  command_pub_ = root_nh.advertise<std_msgs::Float64MultiArray>("/joint_controller/command", 10);
 
-  udp_->InitCmdData(lowCmd_);
-
-  std::string robot_type;
-  root_nh.getParam("robot_type", robot_type);
-#ifdef UNITREE_SDK_3_3_1
-  if (robot_type == "a1") {
-    safety_ = std::make_shared<UNITREE_LEGGED_SDK::Safety>(UNITREE_LEGGED_SDK::LeggedType::A1);
-  } else if (robot_type == "aliengo") {
-    safety_ = std::make_shared<UNITREE_LEGGED_SDK::Safety>(UNITREE_LEGGED_SDK::LeggedType::Aliengo);
-  }
-#elif UNITREE_SDK_3_8_0
-  if (robot_type == "go1") {
-    safety_ = std::make_shared<UNITREE_LEGGED_SDK::Safety>(UNITREE_LEGGED_SDK::LeggedType::Go1);
-  }
-#endif
-  else {
-    ROS_FATAL("Unknown robot type: %s", robot_type.c_str());
-    return false;
-  }
-
-  joyPublisher_ = root_nh.advertise<sensor_msgs::Joy>("/joy", 10);
+  // joyPublisher_ = root_nh.advertise<sensor_msgs::Joy>("/joy", 10);
   contactPublisher_ = root_nh.advertise<std_msgs::Int16MultiArray>(std::string("/contact"), 10);
   return true;
 }
 
+void UnitreeHW::imuCallback(const sensor_msgs::Imu::ConstPtr& msg) {
+  // Orientation (quaternion)
+  imuData_.ori_[0] = msg->orientation.x;
+  imuData_.ori_[1] = msg->orientation.y;
+  imuData_.ori_[2] = msg->orientation.z;
+  imuData_.ori_[3] = msg->orientation.w;
+
+  // Angular velocity
+  imuData_.angularVel_[0] = msg->angular_velocity.x;
+  imuData_.angularVel_[1] = msg->angular_velocity.y;
+  imuData_.angularVel_[2] = msg->angular_velocity.z;
+
+  // Linear acceleration
+  imuData_.linearAcc_[0] = msg->linear_acceleration.x;
+  imuData_.linearAcc_[1] = msg->linear_acceleration.y;
+  imuData_.linearAcc_[2] = msg->linear_acceleration.z;
+}
+
+void UnitreeHW::jointStateCallback(const sensor_msgs::JointState::ConstPtr& msg) {
+  for (size_t i = 0; i < msg->name.size(); ++i) {
+    const std::string& name = msg->name[i];
+
+    // Loop through your registered joints and find matching index
+    for (int j = 0; j < 12; ++j) {
+      if (jointNames_[j] == name) {
+        jointData_[j].pos_ = msg->position[i];
+        jointData_[j].vel_ = msg->velocity[i];
+        jointData_[j].tau_ = msg->effort[i];
+      }
+    }
+  }
+}
+
 void UnitreeHW::read(const ros::Time& time, const ros::Duration& /*period*/) {
-  udp_->Recv();
-  udp_->GetRecv(lowState_);
 
-  for (int i = 0; i < 12; ++i) {
-    jointData_[i].pos_ = lowState_.motorState[i].q;
-    jointData_[i].vel_ = lowState_.motorState[i].dq;
-    jointData_[i].tau_ = lowState_.motorState[i].tauEst;
+  ROS_INFO_STREAM_THROTTLE(0.3, 
+    "IMU Data:\n"
+    << "Orientation: [" << imuData_.ori_[0] << ", " << imuData_.ori_[1] << ", " 
+    << imuData_.ori_[2] << ", " << imuData_.ori_[3] << "]\n"
+    << "Angular Velocity: [" << imuData_.angularVel_[0] << ", " << imuData_.angularVel_[1] << ", " 
+    << imuData_.angularVel_[2] << "]\n"
+    << "Linear Acceleration: [" << imuData_.linearAcc_[0] << ", " << imuData_.linearAcc_[1] << ", " 
+    << imuData_.linearAcc_[2] << "]"
+);
+
+
+
+
+  // for (size_t i = 0; i < CONTACT_SENSOR_NAMES.size(); ++i) {
+  //   contactState_[i] = lowState_.footForce[i] > contactThreshold_;
+  // }
+  int j=0;
+  for (size_t i = 2; i < 12; i=i+3) {
+    contactState_[j] = jointData_[i].tau_ > contactThreshold_;
+    j=j+1;
   }
 
-  imuData_.ori_[0] = lowState_.imu.quaternion[1];
-  imuData_.ori_[1] = lowState_.imu.quaternion[2];
-  imuData_.ori_[2] = lowState_.imu.quaternion[3];
-  imuData_.ori_[3] = lowState_.imu.quaternion[0];
-  imuData_.angularVel_[0] = lowState_.imu.gyroscope[0];
-  imuData_.angularVel_[1] = lowState_.imu.gyroscope[1];
-  imuData_.angularVel_[2] = lowState_.imu.gyroscope[2];
-  imuData_.linearAcc_[0] = lowState_.imu.accelerometer[0];
-  imuData_.linearAcc_[1] = lowState_.imu.accelerometer[1];
-  imuData_.linearAcc_[2] = lowState_.imu.accelerometer[2];
-
+  std::ostringstream contact_oss;
+  contact_oss << "Contact States:\n";
   for (size_t i = 0; i < CONTACT_SENSOR_NAMES.size(); ++i) {
-    contactState_[i] = lowState_.footForce[i] > contactThreshold_;
+    contact_oss << CONTACT_SENSOR_NAMES[i] << ": " << (contactState_[i]) << "\n";
   }
+  ROS_INFO_STREAM_THROTTLE(0.5, contact_oss.str());
 
-  // Set feedforward and velocity cmd to zero to avoid for safety when not controller setCommand
-  std::vector<std::string> names = hybridJointInterface_.getNames();
-  for (const auto& name : names) {
-    HybridJointHandle handle = hybridJointInterface_.getHandle(name);
-    handle.setFeedforward(0.);
-    handle.setVelocityDesired(0.);
-    handle.setKd(3.);
+  // Joint states printout
+  std::ostringstream oss;
+  oss << "Received Joint States (from /joint_states):\n";
+  for (int i = 0; i < 12; ++i) {
+    oss << "Joint " << i << " (" << jointNames_[i] << "): "
+        << "pos = " << jointData_[i].pos_ << ", "
+        << "vel = " << jointData_[i].vel_ << ", "
+        << "tau = " << jointData_[i].tau_ << "\n";
   }
+  ROS_INFO_STREAM_THROTTLE(0.5, oss.str());
 
-  updateJoystick(time);
+  // // Set feedforward and velocity cmd to zero to avoid for safety when not controller setCommand
+  // std::vector<std::string> names = hybridJointInterface_.getNames();
+  // for (const auto& name : names) {
+  //   HybridJointHandle handle = hybridJointInterface_.getHandle(name);
+  //   handle.setFeedforward(0.);
+  //   handle.setVelocityDesired(0.);
+  //   handle.setKd(3.);
+  // }
+
+  // updateJoystick(time);
   updateContact(time);
 }
 
 void UnitreeHW::write(const ros::Time& /*time*/, const ros::Duration& /*period*/) {
-  for (int i = 0; i < 12; ++i) {
-    lowCmd_.motorCmd[i].q = static_cast<float>(jointData_[i].posDes_);
-    lowCmd_.motorCmd[i].dq = static_cast<float>(jointData_[i].velDes_);
-    lowCmd_.motorCmd[i].Kp = static_cast<float>(jointData_[i].kp_);
-    lowCmd_.motorCmd[i].Kd = static_cast<float>(jointData_[i].kd_);
-    lowCmd_.motorCmd[i].tau = static_cast<float>(jointData_[i].ff_);
-  }
-  safety_->PositionLimit(lowCmd_);
-  safety_->PowerProtect(lowCmd_, lowState_, powerLimit_);
-  udp_->SetSend(lowCmd_);
-  udp_->Send();
+
+  std_msgs::Float64MultiArray cmd_msg;
+  cmd_msg.data.reserve(12 * 5);
+
+  // Append posDes
+  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(i);
+  // Append velDes
+  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].velDes_);
+  // Append kp
+  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].kp_); 
+  // Append kd
+  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].kd_);
+  // Append ff
+  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].ff_);
+
+  command_pub_.publish(cmd_msg);
+
+  ROS_INFO_STREAM_THROTTLE(0.5,
+    "Publishing Joint Commands (posDes, velDes, kp, kd, ff):\n" <<
+    [&]() {
+    std::ostringstream oss;
+    for (int i = 0; i < 12; ++i) {
+      oss << "Joint " << i << ": ["
+          << jointData_[i].posDes_ << ", "
+          << jointData_[i].velDes_ << ", "
+          << jointData_[i].kp_ << ", "
+          << jointData_[i].kd_ << ", "
+          << jointData_[i].ff_ << "]\n";
+    }
+    return oss.str();
+    }()
+    );
 }
 
 bool UnitreeHW::setupJoints() {
+  jointNames_.resize(12);
   for (const auto& joint : urdfModel_->joints_) {
     int leg_index = 0;
     int joint_index = 0;
@@ -136,6 +188,7 @@ bool UnitreeHW::setupJoints() {
     }
 
     int index = leg_index * 3 + joint_index;
+    jointNames_[index] = joint.first;
     hardware_interface::JointStateHandle state_handle(joint.first, &jointData_[index].pos_, &jointData_[index].vel_,
                                                       &jointData_[index].tau_);
     jointStateInterface_.registerHandle(state_handle);
@@ -200,9 +253,14 @@ void UnitreeHW::updateContact(const ros::Time& time) {
   lastContactPub_ = time;
 
   std_msgs::Int16MultiArray contactMsg;
-  for (size_t i = 0; i < CONTACT_SENSOR_NAMES.size(); ++i) {
-    contactMsg.data.push_back(lowState_.footForce[i]);
+  // for (size_t i = 0; i < CONTACT_SENSOR_NAMES.size(); ++i) {
+  //   contactMsg.data.push_back(lowState_.footForce[i]);
+  // }
+
+  for (size_t i = 2; i < 12; i=i+3) {
+    contactMsg.data.push_back(jointData_[i].tau_);
   }
+
   contactPublisher_.publish(contactMsg);
 }
 
