@@ -116,7 +116,7 @@
 
         <link name="${prefix}_calf">
             <visual>
-                <origin rpy="0 0 0" xyz="0 0 0"/>
+                <origin rpy="0 0.06 0" xyz="0 0 0"/>
                 <geometry>
                     <mesh filename="${mesh_path}/calf.dae"
                           scale="1 1 1"/>
