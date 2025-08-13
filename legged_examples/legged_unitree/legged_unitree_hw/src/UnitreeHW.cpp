@@ -112,14 +112,14 @@ void UnitreeHW::read(const ros::Time& time, const ros::Duration& /*period*/) {
   }
   ROS_INFO_STREAM_THROTTLE(0.5, oss.str());
 
-  // // Set feedforward and velocity cmd to zero to avoid for safety when not controller setCommand
-  // std::vector<std::string> names = hybridJointInterface_.getNames();
-  // for (const auto& name : names) {
-  //   HybridJointHandle handle = hybridJointInterface_.getHandle(name);
-  //   handle.setFeedforward(0.);
-  //   handle.setVelocityDesired(0.);
-  //   handle.setKd(3.);
-  // }
+  // Set feedforward and velocity cmd to zero to avoid for safety when not controller setCommand
+  std::vector<std::string> names = hybridJointInterface_.getNames();
+  for (const auto& name : names) {
+    HybridJointHandle handle = hybridJointInterface_.getHandle(name);
+    handle.setFeedforward(0.);
+    handle.setVelocityDesired(0.);
+    handle.setKd(3.);
+  }
 
   // updateJoystick(time);
   updateContact(time);
@@ -131,7 +131,7 @@ void UnitreeHW::write(const ros::Time& /*time*/, const ros::Duration& /*period*/
   cmd_msg.data.reserve(12 * 5);
 
   // Append posDes
-  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(i);
+  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].posDes_);
   // Append velDes
   for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].velDes_);
   // Append kp
@@ -202,13 +202,24 @@ bool UnitreeHW::setupImu() {
   imuSensorInterface_.registerHandle(hardware_interface::ImuSensorHandle("base_imu", "base_imu", imuData_.ori_, imuData_.oriCov_,
                                                                          imuData_.angularVel_, imuData_.angularVelCov_, imuData_.linearAcc_,
                                                                          imuData_.linearAccCov_));
-  imuData_.oriCov_[0] = 0.0012;
-  imuData_.oriCov_[4] = 0.0012;
-  imuData_.oriCov_[8] = 0.0012;
+  // imuData_.oriCov_[0] = 0.0012;
+  // imuData_.oriCov_[4] = 0.0012;
+  // imuData_.oriCov_[8] = 0.0012;
+  imuData_.oriCov_[0] = 1.218e-05;
+  imuData_.oriCov_[4] = 1.218e-05;
+  imuData_.oriCov_[8] = 1.218e-05;
 
-  imuData_.angularVelCov_[0] = 0.0004;
-  imuData_.angularVelCov_[4] = 0.0004;
-  imuData_.angularVelCov_[8] = 0.0004;
+  // imuData_.angularVelCov_[0] = 0.0004;
+  // imuData_.angularVelCov_[4] = 0.0004;
+  // imuData_.angularVelCov_[8] = 0.0004;
+  imuData_.angularVelCov_[0] = 7.31e-07;
+  imuData_.angularVelCov_[4] = 7.31e-07;
+  imuData_.angularVelCov_[8] = 7.31e-07;
+
+  imuData_.linearAccCov_[0] = 7.38e-05;
+  imuData_.linearAccCov_[4] = 7.38e-05;
+  imuData_.linearAccCov_[8] = 7.38e-05;
+
 
   return true;
 }
