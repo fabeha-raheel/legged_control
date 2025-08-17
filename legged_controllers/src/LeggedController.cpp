@@ -156,7 +156,8 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
     jointVel(i) = hybridJointHandles_[i].getVelocity();
   }
   for (size_t i = 0; i < contacts.size(); ++i) {
-    contactFlag[i] = contactHandles_[i].isContact();
+    // contactFlag[i] = contactHandles_[i].isContact();
+    contactFlag[i] = leggedInterface_->getSwitchedModelReferenceManagerPtr()->getContactFlags(currentObservation_.time)[i];
   }
   for (size_t i = 0; i < 4; ++i) {
     quat.coeffs()(i) = imuSensorHandle_.getOrientation()[i];
