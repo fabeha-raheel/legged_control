@@ -157,7 +157,7 @@ void UnitreeHW::write(const ros::Time& /*time*/, const ros::Duration& /*period*/
   traj_msg.points.push_back(point);
 
   // Publish
-  pub.publish(traj_msg);
+  command_pub_.publish(traj_msg);
 
   // std_msgs::Float64MultiArray cmd_msg;
   // cmd_msg.data.reserve(12 * 5);
