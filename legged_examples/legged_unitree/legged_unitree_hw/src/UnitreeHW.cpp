@@ -14,6 +14,8 @@
 #include <sensor_msgs/Joy.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/Int16MultiArray.h>
+#include <trajectory_msgs/JointTrajectory.h>
+#include <trajectory_msgs/JointTrajectoryPoint.h>
 
 namespace legged {
 bool UnitreeHW::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw_nh) {
@@ -30,7 +32,7 @@ bool UnitreeHW::init(ros::NodeHandle& root_nh, ros::NodeHandle& robot_hw_nh) {
   // Subscribe to IMU data
   imu_sub_ = root_nh.subscribe<sensor_msgs::Imu>("/imu/data_raw", 10, &UnitreeHW::imuCallback, this);
   joint_state_sub_ = root_nh.subscribe<sensor_msgs::JointState>("/joint_states", 10, &UnitreeHW::jointStateCallback, this);
-  command_pub_ = root_nh.advertise<std_msgs::Float64MultiArray>("/joint_controller/command", 10);
+  command_pub_ = root_nh.advertise<trajectory_msgs::JointTrajectory>("/joint_controller/command", 10);
 
   // joyPublisher_ = root_nh.advertise<sensor_msgs::Joy>("/joy", 10);
   contactPublisher_ = root_nh.advertise<std_msgs::Int16MultiArray>(std::string("/contact"), 10);
@@ -127,21 +129,50 @@ void UnitreeHW::read(const ros::Time& time, const ros::Duration& /*period*/) {
 
 void UnitreeHW::write(const ros::Time& /*time*/, const ros::Duration& /*period*/) {
 
-  std_msgs::Float64MultiArray cmd_msg;
-  cmd_msg.data.reserve(12 * 5);
+  trajectory_msgs::JointTrajectory traj_msg;
+  traj_msg.header.stamp = ros::Time::now();
 
-  // Append posDes
-  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(i);
-  // Append velDes
-  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].velDes_);
-  // Append kp
-  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].kp_); 
-  // Append kd
-  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].kd_);
-  // Append ff
-  for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].ff_);
+  // One trajectory point containing all desired values
+  trajectory_msgs::JointTrajectoryPoint point;
 
-  command_pub_.publish(cmd_msg);
+  traj_msg.joint_names = jointNames_;
+
+  // Positions (dummy i here, replace with your posDes if available)
+  for (int i = 0; i < 12; ++i)
+    point.positions.push_back(jointData_[i].posDes_);
+
+  // Velocities
+  for (int i = 0; i < 12; ++i)
+    point.velocities.push_back(jointData_[i].velDes_);
+
+  // Efforts (using ff_ for feedforward torques/forces)
+  for (int i = 0; i < 12; ++i)
+    point.effort.push_back(jointData_[i].ff_);
+
+  // Set time_from_start (required field)
+  point.time_from_start = ros::Duration(0.01); // e.g., 10ms
+
+  // Add the point to trajectory
+  traj_msg.points.push_back(point);
+
+  // Publish
+  pub.publish(traj_msg);
+
+  // std_msgs::Float64MultiArray cmd_msg;
+  // cmd_msg.data.reserve(12 * 5);
+
+  // // Append posDes
+  // for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(i);
+  // // Append velDes
+  // for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].velDes_);
+  // // Append kp
+  // for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].kp_); 
+  // // Append kd
+  // for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].kd_);
+  // // Append ff
+  // for (int i = 0; i < 12; ++i) cmd_msg.data.push_back(jointData_[i].ff_);
+
+  // command_pub_.publish(cmd_msg);
 
   ROS_INFO_STREAM_THROTTLE(0.5,
     "Publishing Joint Commands (posDes, velDes, kp, kd, ff):\n" <<

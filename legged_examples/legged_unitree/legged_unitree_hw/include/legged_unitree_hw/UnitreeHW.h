@@ -9,6 +9,7 @@
 #include <sensor_msgs/JointState.h>       // For subscribing to joint states
 #include <std_msgs/Float64MultiArray.h>   // For publishing commands
 #include <std_msgs/Int16MultiArray.h>
+#include <trajectory_msgs/JointTrajectory.h>
 
 #ifdef UNITREE_SDK_3_3_1
 #include "unitree_legged_sdk_3_3_1/safety.h"
