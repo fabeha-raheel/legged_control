@@ -90,7 +90,8 @@ void UnitreeHW::read(const ros::Time& time, const ros::Duration& /*period*/) {
   // }
   int j=0;
   for (size_t i = 2; i < 12; i=i+3) {
-    contactState_[j] = jointData_[i].tau_ > contactThreshold_;
+    // contactState_[j] = jointData_[i].tau_ > contactThreshold_;
+    contactState_[j] = 1;
     j=j+1;
   }
 
@@ -269,7 +270,8 @@ void UnitreeHW::updateContact(const ros::Time& time) {
   // }
 
   for (size_t i = 2; i < 12; i=i+3) {
-    contactMsg.data.push_back(jointData_[i].tau_);
+    // contactMsg.data.push_back(jointData_[i].tau_);
+    contactMsg.data.push_back(1);
   }
 
   contactPublisher_.publish(contactMsg);
