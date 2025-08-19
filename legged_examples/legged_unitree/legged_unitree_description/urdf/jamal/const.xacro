@@ -76,8 +76,8 @@
     <!-- dynamics inertial value        total 12.84kg -->
     <!-- trunk -->
     <xacro:property name="trunk_mass" value="13.2256112448737"/>
-    <xacro:property name="trunk_com_x" value="0.0"/>
-    <xacro:property name="trunk_com_y" value="0.002"/>
+    <xacro:property name="trunk_com_x" value="-0.025"/>
+    <xacro:property name="trunk_com_y" value="0"/>
     <xacro:property name="trunk_com_z" value="-0.0005"/>
     <xacro:property name="trunk_ixx" value="0.0574649406584405"/>
     <xacro:property name="trunk_ixy" value="-1.11608864587071E-05"/>
